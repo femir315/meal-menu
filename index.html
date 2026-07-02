@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>우리학교 급식 조회</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    body { font-family: 'Noto Sans KR', sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 p-4 min-h-screen flex flex-col items-center">
+
+  <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-md mt-6">
+    <h1 class="text-2xl font-bold text-center text-emerald-600 mb-6">🏫 학교 급식 조회</h1>
+    
+    <div class="mb-4">
+      <label class="block text-sm font-semibold mb-1 text-gray-600">학교 이름 검색</label>
+      <div class="flex gap-2">
+        <input type="text" id="schoolInput" placeholder="예: 경남초, 의령중" class="flex-1 px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500" onkeyup="if(window.event.keyCode==13){searchSchool()}">
+        <button onclick="searchSchool()" class="bg-emerald-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-600 transition">검색</button>
+      </div>
+    </div>
+
+    <div id="schoolList" class="hidden max-h-40 overflow-y-auto border rounded-xl p-2 mb-4 bg-gray-50 text-sm"></div>
+
+    <div id="mealContainer" class="hidden border-t pt-4 mt-4">
+      <p class="font-bold text-lg text-center text-gray-700 mb-3"><span id="selectedSchoolName" class="text-emerald-600"></span></p>
+      
+      <div class="mb-4">
+        <label class="block text-sm font-semibold mb-1 text-gray-600">날짜 선택</label>
+        <input type="date" id="dateInput" class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      </div>
+      
+      <button onclick="getMeal()" class="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-bold hover:bg-emerald-700 transition mb-4">급식 메뉴 보기</button>
+      
+      <div id="mealResult" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <script>
+    // 💡 나이스 API 키가 있다면 여기에 입력하세요. 
+    // 공백으로 두면 기본 인증키(일일 제한 있음)로 작동하지만, 안정적인 서비스를 위해 발급을 권장합니다.
+    const NEIS_API_KEY = ''; 
+
+    // 오늘 날짜로 기본 세팅 (YYYY-MM-DD)
+    document.getElementById('dateInput').value = new Date().toISOString().substring(0, 10);
+
+    let selectedOffice = '';
+    let selectedSchool = '';
+
+    // 1. 학교 검색 API 호출
+    async function searchSchool() {
+      const name = document.getElementById('schoolInput').value.trim();
+      if (!name) return alert('학교 이름을 입력해주세요.');
+      
+      const listDiv = document.getElementById('schoolList');
+      listDiv.innerHTML = '<p class="text-gray-500 text-center py-2">검색 중...</p>';
+      listDiv.classList.remove('hidden');
+
+      let url = `https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=15&SCHUL_NM=${encodeURIComponent(name)}`;
+      if (NEIS_API_KEY) url += `&KEY=${NEIS_API_KEY}`;
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        listDiv.innerHTML = '';
+        if (!data.schoolInfo) {
+          listDiv.innerHTML = '<p class="text-red-500 text-center py-2">검색 결과가 없습니다.</p>';
+          return;
+        }
+        
+        const list = data.schoolInfo[1].row;
+        list.forEach(school => {
+          const btn = document.createElement('button');
+          btn.className = "w-full text-left p-2 hover:bg-emerald-50 rounded transition mb-1 border-b border-gray-100 last:border-none";
+          btn.innerHTML = `<strong>${school.SCHUL_NM}</strong> <br><span class="text-xs text-gray-400">${school.ORG_RDNMA}</span>`;
+          btn.onclick = function() {
+            selectedOffice = school.ATPT_OFCDC_SC_CODE; // 교육청 코드 (경남은 S10)
+            selectedSchool = school.SD_SCHUL_CODE;      // 표준학교코드
+            document.getElementById('selectedSchoolName').innerText = school.SCHUL_NM;
+            document.getElementById('mealContainer').classList.remove('hidden');
+            listDiv.classList.add('hidden');
+            getMeal(); // 학교 선택 시 자동으로 급식 조회
+          };
+          listDiv.appendChild(btn);
+        });
+      } catch (error) {
+        listDiv.innerHTML = `<p class="text-red-500 text-center py-2">에러가 발생했습니다: ${error.message}</p>`;
+      }
+    }
+
+    // 2. 급식 메뉴 API 호출
+    async function getMeal() {
+      const dateVal = document.getElementById('dateInput').value.replace(/-/g, ''); // YYYYMMDD 변환
+      const resultDiv = document.getElementById('mealResult');
+      resultDiv.innerHTML = '<p class="text-gray-500 text-center py-4">급식 정보를 불러오는 중입니다...</p>';
+
+      let url = `https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=${selectedOffice}&SD_SCHUL_CODE=${selectedSchool}&MLSV_YMD=${dateVal}`;
+      if (NEIS_API_KEY) url += `&KEY=${NEIS_API_KEY}`;
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        resultDiv.innerHTML = '';
+        if (!data.mealServiceDietInfo) {
+          resultDiv.innerHTML = '<div class="p-4 bg-yellow-50 text-yellow-700 rounded-xl text-center font-medium">해당 날짜에는 급식 정보가 없습니다. 🏖️</div>';
+          return;
+        }
+
+        const meals = data.mealServiceDietInfo[1].row;
+        meals.forEach(meal => {
+          // 알레르기 유발 식품 표시용 숫자 및 불필요한 줄바꿈 기호 정제
+          const cleanDish = meal.DDISH_NM.replace(/<br\s*\/?>/gi, '<br>').replace(/\([0-9.]+\)/g, '');
+          
+          const card = document.createElement('div');
+          card.className = "p-4 bg-emerald-50/60 rounded-xl border border-emerald-100";
+          card.innerHTML = `
+            <div class="flex justify-between items-center mb-2">
+              <span class="bg-emerald-600 text-white text-xs px-2 py-1 rounded-md font-bold">${meal.MMEAL_SC_NM}</span>
+              <span class="text-xs text-gray-500 font-medium">${meal.CAL_INFO}</span>
+            </div>
+            <p class="text-gray-700 leading-relaxed text-sm font-medium">${cleanDish}</p>
+          `;
+          resultDiv.appendChild(card);
+        });
+      } catch (error) {
+        resultDiv.innerHTML = `<p class="text-red-500 text-center py-4">에러가 발생했습니다: ${error.message}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>
