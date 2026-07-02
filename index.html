@@ -50,13 +50,17 @@
   </div>
 
   <script>
-    const ATPT_OFCDC_SC_CODE = 'S10';
-    const SD_SCHUL_CODE = '9211116';
-    const NEIS_API_KEY = ''; // 필요시 나이스 오픈 API 키 입력
+    // [수정 완료] 창원대원초등학교 올바른 고유 코드 매핑
+    const ATPT_OFCDC_SC_CODE = 'S10'; // 경남교육청
+    const SD_SCHUL_CODE = '9211024';      // 창원대원초등학교 실제 표준학교코드
+    const NEIS_API_KEY = ''; 
 
+    // 한국 표준시 기준으로 정확하게 날짜 설정 (시차 버그 수정)
     const dateInput = document.getElementById('dateInput');
-    const today = new Date();
-    dateInput.value = today.toISOString().substring(0, 10);
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const kstDate = new Date(utc + (9 * 60 * 60 * 1000));
+    dateInput.value = kstDate.toISOString().substring(0, 10);
 
     function changeDate(days) {
       const currentVal = new Date(dateInput.value);
@@ -74,6 +78,7 @@
       const resultDiv = document.getElementById('mealResult');
       resultDiv.innerHTML = '<p class="text-slate-400 text-center py-8 text-sm">급식 정보를 불러오는 중입니다...</p>';
 
+      // 나이스 API는 규격상 대문자 'Type=json' 필수 요구
       let url = `https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=${ATPT_OFCDC_SC_CODE}&SD_SCHUL_CODE=${SD_SCHUL_CODE}&MLSV_YMD=${dateVal}`;
       if (NEIS_API_KEY) url += `&KEY=${NEIS_API_KEY}`;
 
@@ -82,6 +87,8 @@
         const data = await response.json();
         
         resultDiv.innerHTML = '';
+        
+        // 데이터가 누락되었거나 에러코드가 반환된 경우 처리
         if (!data.mealServiceDietInfo) {
           resultDiv.innerHTML = `
             <div class="p-6 bg-amber-50/50 text-amber-700 rounded-2xl text-center border border-amber-100">
@@ -94,6 +101,7 @@
 
         const meals = data.mealServiceDietInfo[1].row;
         meals.forEach(meal => {
+          // 요리명 가공 및 알레르기 유발 식품 표시 번호 제거
           const cleanDish = meal.DDISH_NM.replace(/<br\s*\/?>/gi, '<br>').replace(/\([0-9.]+\)/g, '');
           
           const card = document.createElement('div');
@@ -112,9 +120,10 @@
       }
     }
 
+    // 초기 실행
     getMeal();
 
-    // 서비스 워커 등록
+    // 서비스 워커 등록 (PWA 세팅)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
@@ -123,7 +132,6 @@
       });
     }
 
-    // PWA 설치 프로필 제어
     let deferredPrompt;
     const installBtn = document.getElementById('installBtn');
 
